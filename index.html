@@ -550,7 +550,12 @@ body{
 <div id="toast" class="toast" style="display:none"></div>
 
 <!-- Supabase SDK -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/sb-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+if (typeof window.supabase === 'undefined') {
+  document.write('<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"><\/script>');
+}
+</script>
 <script>
 // ==================== 配置管理 ====================
 let sb = null;
@@ -567,7 +572,7 @@ function saveConfig() {
   const url = document.getElementById('setupUrl').value.trim();
   const key = document.getElementById('setupKey').value.trim();
   
-  if (!url || !key) { 
+  if (!url || !key) {  
     showToast('请填写完整的配置信息');
     return;
   }
