@@ -530,7 +530,7 @@ body{
         <label class="form-label">邮箱</label>
         <input type="email" class="form-input" id="regEmail" placeholder="请输入邮箱">
       </div>
-      <div class="form-group">
+      < div class="form-group">
         <label class="form-label">密码</label>
         <input type="password" class="form-input" id="regPassword" placeholder="至少6位">
       </div>
@@ -567,7 +567,7 @@ function saveConfig() {
   const url = document.getElementById('setupUrl').value.trim();
   const key = document.getElementById('setupKey').value.trim();
   
-  if (!url || !key) {
+  if (!url || !key) { 
     showToast('请填写完整的配置信息');
     return;
   }
