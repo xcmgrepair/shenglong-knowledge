@@ -93,6 +93,7 @@ body{
 .tabs{
   display:flex;border-bottom:1px solid var(--border);
   background:var(--card);padding:0 16px;overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
 }
 .tab{
   padding:12px 16px;font-size:14px;color:var(--text-2);
@@ -236,6 +237,45 @@ body{
 .tree-kb-table td{padding:5px 10px;vertical-align:middle}
 .tree-kb-table .action-btn{padding:2px 6px;font-size:11px}
 .tree-kb-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+/* Dashboard */
+.dash-section{margin-bottom:20px}
+.dash-section-title{font-size:16px;font-weight:600;margin-bottom:12px;padding-left:4px}
+.dash-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.dash-card{
+  background:var(--card);border-radius:12px;padding:16px;
+  box-shadow:var(--shadow);position:relative;overflow:hidden;
+}
+.dash-card .dash-num{font-size:32px;font-weight:700;line-height:1.2}
+.dash-card .dash-label{font-size:12px;color:var(--text-3);margin-top:4px}
+.dash-card .dash-icon{
+  position:absolute;right:12px;top:12px;font-size:28px;opacity:0.2;
+}
+.dash-manual{
+  background:var(--card);border-radius:12px;padding:16px;margin-bottom:12px;
+  box-shadow:var(--shadow);
+}
+.dash-manual-header{
+  display:flex;align-items:center;gap:8px;margin-bottom:12px;
+  padding-bottom:10px;border-bottom:1px solid var(--border);
+}
+.dash-manual-icon{font-size:24px}
+.dash-manual-name{font-size:15px;font-weight:600;flex:1}
+.dash-manual-stats{display:flex;gap:16px;font-size:13px;color:var(--text-2)}
+.dash-manual-stats span{display:flex;align-items:center;gap:4px}
+.dash-cat-row{
+  display:flex;align-items:center;gap:8px;padding:8px 0;
+  border-bottom:1px solid var(--border);
+}
+.dash-cat-row:last-child{border-bottom:none}
+.dash-cat-name{flex:1;font-size:13px}
+.dash-cat-bar{
+  flex:2;height:8px;background:var(--bg);border-radius:4px;overflow:hidden;position:relative;
+}
+.dash-cat-bar-fill{
+  height:100%;border-radius:4px;transition:width 0.5s ease;
+}
+.dash-cat-count{font-size:13px;font-weight:600;min-width:30px;text-align:right;color:var(--text-2)}
+.dash-empty{text-align:center;padding:20px;color:var(--text-3);font-size:14px}
 /* Modal */
 .modal-overlay{
   position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;
@@ -521,6 +561,7 @@ body{
     <div class="tab" onclick="switchTab('knowledge')">知识点</div>
     <div class="tab" onclick="switchTab('categories')">分类管理</div>
     <div class="tab" onclick="switchTab('manuals')">手册管理</div>
+    <div class="tab" onclick="switchTab('dashboard')">看板</div>
     <div class="tab" onclick="switchTab('users')">用户管理</div>
   </div>
   
@@ -577,6 +618,22 @@ body{
   <div id="usersTab" class="tab-content">
     <div class="list" id="usersList">
       <div class="loading"><div class="loading-spinner"></div><div class="loading-text">加载中...</div></div>
+    </div>
+  </div>
+  
+  <!-- 看板 -->
+  <div id="dashboardTab" class="tab-content">
+    <div class="dash-section">
+      <div class="dash-section-title">总览</div>
+      <div class="dash-cards" id="dashOverview">
+        <div class="loading"><div class="loading-spinner"></div><div class="loading-text">加载中...</div></div>
+      </div>
+    </div>
+    <div class="dash-section">
+      <div class="dash-section-title">手册分类统计</div>
+      <div id="dashManuals">
+        <div class="loading"><div class="loading-spinner"></div><div class="loading-text">加载中...</div></div>
+      </div>
     </div>
   </div>
 </div>
