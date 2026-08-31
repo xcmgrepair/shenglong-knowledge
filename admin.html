@@ -197,6 +197,45 @@ body{
 }
 .word-upload-area:hover{border-color:var(--primary);background:var(--primary-light)}
 .word-upload-area.dragover{border-color:var(--accent);background:var(--primary-light)}
+/* Knowledge Table */
+.kb-table{
+  width:100%;border-collapse:collapse;font-size:13px;background:var(--card);
+  border-radius:10px;overflow:hidden;box-shadow:var(--shadow);
+}
+.kb-table thead{background:var(--primary)}
+.kb-table thead th{
+  color:#fff;padding:10px 12px;text-align:left;font-weight:500;
+  font-size:13px;white-space:nowrap;
+}
+.kb-table tbody tr{border-bottom:1px solid var(--border);transition:background 0.15s}
+.kb-table tbody tr:hover{background:var(--primary-light)}
+.kb-table tbody tr:last-child{border-bottom:none}
+.kb-table td{padding:8px 12px;vertical-align:middle}
+.kb-table .col-idx{width:40px;text-align:center;color:var(--text-3)}
+.kb-table .col-status{width:70px;white-space:nowrap}
+.kb-table .col-title{min-width:120px}
+.kb-table .col-cat{width:100px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-2)}
+.kb-table .col-views{width:60px;text-align:center;color:var(--text-3)}
+.kb-table .col-date{width:100px;white-space:nowrap;color:var(--text-3);font-size:12px}
+.kb-table .col-actions{width:120px;white-space:nowrap;text-align:right}
+.kb-table .col-actions .action-btn{padding:3px 8px;font-size:12px}
+.kb-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+/* Tree Knowledge Table */
+.tree-kb-table{
+  width:100%;border-collapse:collapse;font-size:12px;
+  margin:4px 0 4px 24px;
+}
+.tree-kb-table thead th{
+  padding:6px 10px;text-align:left;font-weight:500;font-size:11px;
+  color:var(--text-3);border-bottom:1px solid var(--border);
+  background:var(--bg);
+}
+.tree-kb-table tbody tr{border-bottom:1px solid var(--border);transition:background 0.15s}
+.tree-kb-table tbody tr:hover{background:var(--primary-light)}
+.tree-kb-table tbody tr:last-child{border-bottom:none}
+.tree-kb-table td{padding:5px 10px;vertical-align:middle}
+.tree-kb-table .action-btn{padding:2px 6px;font-size:11px}
+.tree-kb-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 /* Modal */
 .modal-overlay{
   position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;
