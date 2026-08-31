@@ -529,9 +529,60 @@ function showKnowledgeForm() {
   document.getElementById('kbContent').value = '';
   document.getElementById('kbStatus').value = 'published';
   document.getElementById('kbSort').value = '0';
+  document.getElementById('kbWordFile').value = '';
+  const ws = document.getElementById('kbWordStatus');
+  ws.style.display = 'none';
+  ws.textContent = '';
   
   loadCategoryOptions();
   document.getElementById('knowledgeModal').style.display = 'flex';
+}
+
+async function handleWordUpload(input) {
+  const file = input.files[0];
+  if (!file) return;
+  
+  const statusEl = document.getElementById('kbWordStatus');
+  statusEl.style.display = 'block';
+  statusEl.style.color = 'var(--warning)';
+  statusEl.textContent = '正在解析 Word 文档...';
+  
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    
+    if (typeof mammoth === 'undefined') {
+      statusEl.textContent = 'Word 解析库未加载，请刷新页面重试';
+      statusEl.style.color = 'var(--danger)';
+      return;
+    }
+    
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    const text = result.value;
+    
+    if (!text || text.trim().length === 0) {
+      statusEl.textContent = '未能从文档中提取到内容';
+      statusEl.style.color = 'var(--danger)';
+      return;
+    }
+    
+    // 填充内容
+    document.getElementById('kbContent').value = text;
+    
+    // 如果标题为空，用文件名作为标题
+    const titleField = document.getElementById('kbTitle');
+    if (!titleField.value.trim()) {
+      const fileName = file.name.replace(/\.docx?$/i, '');
+      titleField.value = fileName;
+    }
+    
+    statusEl.style.color = 'var(--success)';
+    statusEl.textContent = '✓ 解析成功，已填充 ' + text.length + ' 字内容';
+    
+  } catch (err) {
+    console.error('Word 解析失败:', err);
+    statusEl.style.color = 'var(--danger)';
+    statusEl.textContent = '解析失败：' + (err.message || '未知错误');
+  }
 }
 
 async function editKnowledge(id) {
@@ -552,6 +603,10 @@ async function editKnowledge(id) {
     document.getElementById('kbContent').value = data.content;
     document.getElementById('kbStatus').value = data.status;
     document.getElementById('kbSort').value = data.sort_order || 0;
+    document.getElementById('kbWordFile').value = '';
+    const ws2 = document.getElementById('kbWordStatus');
+    ws2.style.display = 'none';
+    ws2.textContent = '';
     
     await loadCategoryOptions();
     document.getElementById('kbCategory').value = data.category_id;
@@ -629,6 +684,7 @@ async function deleteKnowledge(id) {
 
 // ==================== 分类管理 ====================
 let allCategories = [];
+let allKnowledgeByCategory = {};
 
 async function loadCategories() {
   try {
@@ -640,6 +696,23 @@ async function loadCategories() {
     if (error) throw error;
     
     allCategories = data || [];
+    
+    // 加载所有知识点，按 category_id 分组
+    const { data: knowledgeData, error: kError } = await sbData
+      .from('knowledge')
+      .select('id, title, status, category_id, sort_order, views')
+      .order('sort_order');
+    
+    if (!kError && knowledgeData) {
+      allKnowledgeByCategory = {};
+      knowledgeData.forEach(k => {
+        if (!allKnowledgeByCategory[k.category_id]) {
+          allKnowledgeByCategory[k.category_id] = [];
+        }
+        allKnowledgeByCategory[k.category_id].push(k);
+      });
+    }
+    
     renderCategories(allCategories);
     
   } catch (err) {
@@ -702,16 +775,41 @@ function renderCategories(list) {
     return roots;
   }
   
+  // 渲染知识点列表
+  function renderKnowledgeItems(categoryId) {
+    const items = allKnowledgeByCategory[categoryId] || [];
+    if (items.length === 0) return '';
+    
+    return items.map(k => {
+      const kBadge = `<span class="badge badge-${k.status === 'published' ? 'published' : 'draft'}">${k.status === 'published' ? '已发布' : '草稿'}</span>`;
+      return `
+        <div class="tree-knowledge-item">
+          <span class="tree-knowledge-icon">📝</span>
+          <div class="tree-knowledge-info">
+            <div class="tree-knowledge-title">${kBadge} ${escapeHtml(k.title)}</div>
+            <div class="tree-knowledge-sub">浏览：${k.views || 0} · 排序：${k.sort_order || 0}</div>
+          </div>
+          <div class="tree-knowledge-actions">
+            <button class="action-btn action-btn-primary" onclick="event.stopPropagation();editKnowledge('${k.id}')">编辑</button>
+            <button class="action-btn action-btn-danger" onclick="event.stopPropagation();deleteKnowledge('${k.id}')">删除</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+  
   // 递归渲染树节点
   function renderNode(node) {
     const hasChildren = node.children && node.children.length > 0;
+    const knowledgeItems = allKnowledgeByCategory[node.id] || [];
+    const hasKnowledge = knowledgeItems.length > 0;
+    const hasContent = hasChildren || hasKnowledge;
     const statusBadge = `<span class="badge badge-${node.status === 'active' ? 'published' : 'draft'}">${node.status === 'active' ? '启用' : '禁用'}</span>`;
-    const subText = `排序：${node.sort_order || 0}${node.description ? ' · ' + escapeHtml(node.description) : ''}`;
+    const subText = `排序：${node.sort_order || 0}${node.description ? ' · ' + escapeHtml(node.description) : ''}${hasKnowledge ? ' · ' + knowledgeItems.length + ' 篇知识点' : ''}`;
     
-    let html = `<div class="tree-node${hasChildren ? '' : ' collapsed'}">
+    let html = `<div class="tree-node${hasContent ? '' : ' collapsed'}">
       <div class="tree-node-content">
-        ${hasChildren ? `<span class="tree-toggle" onclick="toggleTreeNode(this)">▼</span>` : '<span class="tree-toggle-placeholder"></span>'}
-        <span class="tree-icon">${hasChildren ? '📂' : '📄'}</span>
+        ${hasContent ? `<span class="tree-toggle" onclick="toggleTreeNode(this)">▼</span>` : '<span class="tree-toggle-placeholder"></span>'}
+        <span class="tree-icon">${hasContent ? '📂' : '📄'}</span>
         <div class="tree-node-info">
           <div class="tree-node-title">${statusBadge} ${escapeHtml(node.name)}</div>
           <div class="tree-node-sub">${subText}</div>
@@ -722,11 +820,16 @@ function renderCategories(list) {
         </div>
       </div>`;
     
-    if (hasChildren) {
+    if (hasContent) {
       html += '<div class="tree-children">';
-      node.children.forEach(child => {
-        html += renderNode(child);
-      });
+      if (hasChildren) {
+        node.children.forEach(child => {
+          html += renderNode(child);
+        });
+      }
+      if (hasKnowledge) {
+        html += renderKnowledgeItems(node.id);
+      }
       html += '</div>';
     }
     
@@ -739,13 +842,18 @@ function renderCategories(list) {
   
   Object.values(manualMap).forEach(manual => {
     const tree = buildTree(manual.categories);
+    // 统计该手册下所有知识点
+    let knowledgeCount = 0;
+    manual.categories.forEach(c => {
+      knowledgeCount += (allKnowledgeByCategory[c.id] || []).length;
+    });
     html += `
       <div class="tree-directory">
         <div class="tree-directory-header" onclick="toggleTreeDirectory(this)">
           <span class="tree-toggle">▼</span>
           <span class="tree-directory-icon">${manual.icon}</span>
           <span class="tree-directory-name">${escapeHtml(manual.name)}</span>
-          <span class="tree-directory-count">${manual.categories.length} 个分类</span>
+          <span class="tree-directory-count">${manual.categories.length} 分类 · ${knowledgeCount} 知识点</span>
           <button class="action-btn action-btn-primary" onclick="event.stopPropagation();showCategoryFormForManual('${manual.id}','${escapeHtml(manual.name)}')">+ 添加</button>
         </div>
         <div class="tree-directory-body">`;
@@ -763,32 +871,21 @@ function renderCategories(list) {
   
   // 未分配手册的分类
   if (orphanCats.length > 0) {
+    let orphanKnowledgeCount = 0;
+    orphanCats.forEach(c => {
+      orphanKnowledgeCount += (allKnowledgeByCategory[c.id] || []).length;
+    });
     html += `
       <div class="tree-directory">
         <div class="tree-directory-header" onclick="toggleTreeDirectory(this)">
           <span class="tree-toggle">▼</span>
           <span class="tree-directory-icon">📋</span>
           <span class="tree-directory-name">未分配手册</span>
-          <span class="tree-directory-count">${orphanCats.length} 个分类</span>
+          <span class="tree-directory-count">${orphanCats.length} 分类 · ${orphanKnowledgeCount} 知识点</span>
         </div>
         <div class="tree-directory-body">`;
     orphanCats.forEach(c => {
-      const statusBadge = `<span class="badge badge-${c.status === 'active' ? 'published' : 'draft'}">${c.status === 'active' ? '启用' : '禁用'}</span>`;
-      html += `
-        <div class="tree-node collapsed">
-          <div class="tree-node-content">
-            <span class="tree-toggle-placeholder"></span>
-            <span class="tree-icon">📄</span>
-            <div class="tree-node-info">
-              <div class="tree-node-title">${statusBadge} ${escapeHtml(c.name)}</div>
-              <div class="tree-node-sub">排序：${c.sort_order || 0}${c.description ? ' · ' + escapeHtml(c.description) : ''}</div>
-            </div>
-            <div class="tree-node-actions">
-              <button class="action-btn action-btn-primary" onclick="event.stopPropagation();editCategory('${c.id}')">编辑</button>
-              <button class="action-btn action-btn-danger" onclick="event.stopPropagation();deleteCategory('${c.id}')">删除</button>
-            </div>
-          </div>
-        </div>`;
+      html += renderNode({ ...c, children: [] });
     });
     html += '</div></div>';
   }
