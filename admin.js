@@ -824,27 +824,36 @@ function renderCategories(list) {
     return roots;
   }
   
-  // 渲染知识点列表
+  // 渲染知识点列表（表格形式）
   function renderKnowledgeItems(categoryId) {
     const items = allKnowledgeByCategory[categoryId] || [];
     if (items.length === 0) return '';
     
-    return items.map(k => {
+    let html = '<div class="tree-kb-table-wrap"><table class="tree-kb-table"><thead><tr>';
+    html += '<th style="width:30px">#</th>';
+    html += '<th>标题</th>';
+    html += '<th style="width:50px">状态</th>';
+    html += '<th style="width:45px;text-align:center">浏览</th>';
+    html += '<th style="width:100px;text-align:right">操作</th>';
+    html += '</tr></thead><tbody>';
+    
+    items.forEach((k, i) => {
       const kBadge = `<span class="badge badge-${k.status === 'published' ? 'published' : 'draft'}">${k.status === 'published' ? '已发布' : '草稿'}</span>`;
-      return `
-        <div class="tree-knowledge-item">
-          <span class="tree-knowledge-icon">📝</span>
-          <div class="tree-knowledge-info">
-            <div class="tree-knowledge-title"><span class="kb-title-link" onclick="viewKnowledge('${k.id}')">${kBadge} ${escapeHtml(k.title)}</span></div>
-            <div class="tree-knowledge-sub">浏览：${k.views || 0} · 排序：${k.sort_order || 0}</div>
-          </div>
-          <div class="tree-knowledge-actions">
-            <button class="action-btn action-btn-primary" onclick="event.stopPropagation();viewKnowledge('${k.id}')">查看</button>
-            <button class="action-btn action-btn-primary" onclick="event.stopPropagation();editKnowledge('${k.id}')">编辑</button>
-            <button class="action-btn action-btn-danger" onclick="event.stopPropagation();deleteKnowledge('${k.id}')">删除</button>
-          </div>
-        </div>`;
-    }).join('');
+      html += `<tr>
+        <td style="color:var(--text-3)">${i + 1}</td>
+        <td><span class="kb-title-link" onclick="viewKnowledge('${k.id}')">${escapeHtml(k.title)}</span></td>
+        <td>${kBadge}</td>
+        <td style="text-align:center;color:var(--text-3)">${k.views || 0}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="action-btn action-btn-primary" onclick="event.stopPropagation();viewKnowledge('${k.id}')">查看</button>
+          <button class="action-btn action-btn-primary" onclick="event.stopPropagation();editKnowledge('${k.id}')">编辑</button>
+          <button class="action-btn action-btn-danger" onclick="event.stopPropagation();deleteKnowledge('${k.id}')">删除</button>
+        </td>
+      </tr>`;
+    });
+    
+    html += '</tbody></table></div>';
+    return html;
   }
   
   // 递归渲染树节点
