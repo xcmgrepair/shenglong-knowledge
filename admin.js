@@ -34,13 +34,16 @@ function initSupabase() {
   const config = getConfig();
   if (config.url && config.key) {
     sb = window.supabase.createClient(config.url, config.key);
-    // 创建独立的数据查询客户端，不携带用户 session
-    // 这样查询不会触发 RLS 递归错误
+    // 创建独立的数据查询客户端，使用空存储确保不携带用户 session
+    // 这样查询只走 anon key，不会触发 profiles RLS 递归错误
+    const emptyStorage = {
+      getItem: () => null,
+      setItem: () => {},
+      removeItem: () => {}
+    };
     sbData = window.supabase.createClient(config.url, config.key, {
-      global: { headers: { 'X-Client-Info': 'admin-data-client' } }
+      auth: { storage: emptyStorage, autoRefreshToken: false, persistSession: false }
     });
-    // 清除 sbData 的 session，确保用 anon key 查询
-    sbData.auth.signOut().catch(() => {});
     return true;
   }
   return false;
