@@ -475,7 +475,7 @@ function renderKnowledge(list) {
       <div class="list-item-main">
         <div class="list-item-title">
           <span class="badge badge-${k.status === 'published' ? 'published' : 'draft'}">${k.status === 'published' ? '已发布' : '草稿'}</span>
-          ${escapeHtml(k.title)}
+          <span class="kb-title-link" onclick="viewKnowledge('${k.id}')">${escapeHtml(k.title)}</span>
         </div>
         <div class="list-item-sub">
           分类：${k.categories?.name || '未分类'} | 
@@ -485,6 +485,7 @@ function renderKnowledge(list) {
         <div class="list-item-desc">${escapeHtml(k.description || k.content.substring(0, 100))}</div>
       </div>
       <div class="list-item-actions">
+        <button class="action-btn action-btn-primary" onclick="viewKnowledge('${k.id}')">查看</button>
         <button class="action-btn action-btn-primary" onclick="editKnowledge('${k.id}')">编辑</button>
         <button class="action-btn action-btn-danger" onclick="deleteKnowledge('${k.id}')">删除</button>
       </div>
@@ -582,6 +583,54 @@ async function handleWordUpload(input) {
     console.error('Word 解析失败:', err);
     statusEl.style.color = 'var(--danger)';
     statusEl.textContent = '解析失败：' + (err.message || '未知错误');
+  }
+}
+
+let viewingKnowledgeId = null;
+
+async function viewKnowledge(id) {
+  viewingKnowledgeId = id;
+  
+  try {
+    const { data, error } = await sbData
+      .from('knowledge')
+      .select('*, categories(name)')
+      .eq('id', id)
+      .single();
+    
+    if (error) throw error;
+    
+    document.getElementById('viewKbTitle').textContent = data.title;
+    document.getElementById('viewKbBadge').className = `badge badge-${data.status === 'published' ? 'published' : 'draft'}`;
+    document.getElementById('viewKbBadge').textContent = data.status === 'published' ? '已发布' : '草稿';
+    document.getElementById('viewKbCategory').textContent = '分类：' + (data.categories?.name || '未分类');
+    
+    const descEl = document.getElementById('viewKbDesc');
+    if (data.description) {
+      descEl.textContent = data.description;
+      descEl.style.display = 'block';
+    } else {
+      descEl.style.display = 'none';
+    }
+    
+    document.getElementById('viewKbViews').textContent = '浏览：' + (data.views || 0);
+    document.getElementById('viewKbDate').textContent = '创建：' + formatDate(data.created_at);
+    document.getElementById('viewKbSort').textContent = '排序：' + (data.sort_order || 0);
+    document.getElementById('viewKbContent').textContent = data.content;
+    
+    document.getElementById('viewKnowledgeModal').style.display = 'flex';
+    
+  } catch (err) {
+    console.error('查看失败:', err);
+    showToast('加载失败');
+  }
+}
+
+function editFromView() {
+  closeModal('viewKnowledgeModal');
+  if (viewingKnowledgeId) {
+    editKnowledge(viewingKnowledgeId);
+    viewingKnowledgeId = null;
   }
 }
 
@@ -786,10 +835,11 @@ function renderCategories(list) {
         <div class="tree-knowledge-item">
           <span class="tree-knowledge-icon">📝</span>
           <div class="tree-knowledge-info">
-            <div class="tree-knowledge-title">${kBadge} ${escapeHtml(k.title)}</div>
+            <div class="tree-knowledge-title"><span class="kb-title-link" onclick="viewKnowledge('${k.id}')">${kBadge} ${escapeHtml(k.title)}</span></div>
             <div class="tree-knowledge-sub">浏览：${k.views || 0} · 排序：${k.sort_order || 0}</div>
           </div>
           <div class="tree-knowledge-actions">
+            <button class="action-btn action-btn-primary" onclick="event.stopPropagation();viewKnowledge('${k.id}')">查看</button>
             <button class="action-btn action-btn-primary" onclick="event.stopPropagation();editKnowledge('${k.id}')">编辑</button>
             <button class="action-btn action-btn-danger" onclick="event.stopPropagation();deleteKnowledge('${k.id}')">删除</button>
           </div>
