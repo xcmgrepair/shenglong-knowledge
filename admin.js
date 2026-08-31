@@ -232,6 +232,173 @@ function switchTab(tab) {
   
   event.target.classList.add('active');
   document.getElementById(tab + 'Tab').classList.add('active');
+  
+  // 看板数据懒加载
+  if (tab === 'dashboard') {
+    loadDashboard();
+  }
+}
+
+// ==================== 看板 ====================
+const dashColors = ['#1a2744','#e63900','#1b8a3a','#c77700','#4a6fa5','#8b5cf6','#06b6d4','#f59e0b'];
+
+async function loadDashboard() {
+  try {
+    // 并行加载所有数据
+    const [manualsRes, categoriesRes, knowledgeRes] = await Promise.all([
+      sbData.from('manuals').select('id,name,description,status,sort_order').order('sort_order'),
+      sbData.from('categories').select('id,name,manual_id,parent_id,status,sort_order').order('sort_order'),
+      sbData.from('knowledge').select('id,title,category_id,status,views,created_at').order('created_at',{ascending:false})
+    ]);
+
+    if (manualsRes.error) throw manualsRes.error;
+    if (categoriesRes.error) throw categoriesRes.error;
+    if (knowledgeRes.error) throw knowledgeRes.error;
+
+    const manuals = manualsRes.data || [];
+    const categories = categoriesRes.data || [];
+    const knowledge = knowledgeRes.data || [];
+
+    // 总览统计
+    const totalViews = knowledge.reduce((sum, k) => sum + (k.views || 0), 0);
+    const publishedCount = knowledge.filter(k => k.status === 'published').length;
+    const draftCount = knowledge.filter(k => k.status === 'draft').length;
+
+    const overviewHTML = `
+      <div class="dash-card">
+        <div class="dash-icon">📚</div>
+        <div class="dash-num" style="color:var(--primary)">${manuals.length}</div>
+        <div class="dash-label">手册总数</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-icon">📁</div>
+        <div class="dash-num" style="color:var(--accent)">${categories.length}</div>
+        <div class="dash-label">分类总数</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-icon">📄</div>
+        <div class="dash-num" style="color:var(--success)">${knowledge.length}</div>
+        <div class="dash-label">知识点总数</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-icon">👁️</div>
+        <div class="dash-num" style="color:var(--warning)">${totalViews}</div>
+        <div class="dash-label">总浏览量</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-icon">✅</div>
+        <div class="dash-num" style="color:var(--success)">${publishedCount}</div>
+        <div class="dash-label">已发布</div>
+      </div>
+      <div class="dash-card">
+        <div class="dash-icon">📝</div>
+        <div class="dash-num" style="color:var(--text-3)">${draftCount}</div>
+        <div class="dash-label">草稿数</div>
+      </div>
+    `;
+    document.getElementById('dashOverview').innerHTML = overviewHTML;
+
+    // 手册分类统计
+    if (manuals.length === 0) {
+      document.getElementById('dashManuals').innerHTML = '<div class="dash-empty">暂无手册数据</div>';
+      return;
+    }
+
+    const maxKnowledge = Math.max(1, ...manuals.map(m => {
+      const manualCats = categories.filter(c => c.manual_id === m.id);
+      const manualKb = knowledge.filter(k => manualCats.some(c => c.id === k.category_id));
+      return manualKb.length;
+    }));
+
+    const manualsHTML = manuals.map((m, idx) => {
+      const manualCats = categories.filter(c => c.manual_id === m.id);
+      const manualKb = knowledge.filter(k => manualCats.some(c => c.id === k.category_id));
+      const manualViews = manualKb.reduce((sum, k) => sum + (k.views || 0), 0);
+      const color = dashColors[idx % dashColors.length];
+
+      // 按分类统计知识点
+      const catRows = manualCats.map(cat => {
+        const catKb = knowledge.filter(k => k.category_id === cat.id);
+        const childCats = categories.filter(c => c.parent_id === cat.id);
+        // 包含子分类的知识点
+        const allCatKb = [...catKb];
+        childCats.forEach(cc => {
+          allCatKb.push(...knowledge.filter(k => k.category_id === cc.id));
+        });
+        const count = allCatKb.length;
+        const pct = maxKnowledge > 0 ? (count / maxKnowledge * 100) : 0;
+        
+        let catName = escapeHtml(cat.name);
+        if (childCats.length > 0) {
+          catName += ` <span style="color:var(--text-3);font-size:11px">(${childCats.length}子分类)</span>`;
+        }
+        
+        return `
+          <div class="dash-cat-row">
+            <div class="dash-cat-name">${catName}</div>
+            <div class="dash-cat-bar">
+              <div class="dash-cat-bar-fill" style="width:${pct}%;background:${color}"></div>
+            </div>
+            <div class="dash-cat-count">${count}</div>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="dash-manual">
+          <div class="dash-manual-header">
+            <span class="dash-manual-icon">📖</span>
+            <span class="dash-manual-name">${escapeHtml(m.name)}</span>
+            <div class="dash-manual-stats">
+              <span>📁 ${manualCats.length} 分类</span>
+              <span>📄 ${manualKb.length} 知识点</span>
+              <span>👁️ ${manualViews} 浏览</span>
+            </div>
+          </div>
+          ${manualCats.length > 0 ? catRows : '<div class="dash-empty">暂无分类</div>'}
+        </div>
+      `;
+    }).join('');
+
+    // 未分配手册的分类
+    const orphanCats = categories.filter(c => !c.manual_id);
+    let orphanHTML = '';
+    if (orphanCats.length > 0) {
+      const orphanKb = knowledge.filter(k => orphanCats.some(c => c.id === k.category_id));
+      orphanHTML = `
+        <div class="dash-manual">
+          <div class="dash-manual-header">
+            <span class="dash-manual-icon">📦</span>
+            <span class="dash-manual-name">未分配手册的分类</span>
+            <div class="dash-manual-stats">
+              <span>📁 ${orphanCats.length} 分类</span>
+              <span>📄 ${orphanKb.length} 知识点</span>
+            </div>
+          </div>
+          ${orphanCats.map(cat => {
+            const count = knowledge.filter(k => k.category_id === cat.id).length;
+            const pct = maxKnowledge > 0 ? (count / maxKnowledge * 100) : 0;
+            return `
+              <div class="dash-cat-row">
+                <div class="dash-cat-name">${escapeHtml(cat.name)}</div>
+                <div class="dash-cat-bar">
+                  <div class="dash-cat-bar-fill" style="width:${pct}%;background:var(--text-3)"></div>
+                </div>
+                <div class="dash-cat-count">${count}</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    document.getElementById('dashManuals').innerHTML = manualsHTML + orphanHTML;
+
+  } catch (err) {
+    console.error('加载看板失败:', err);
+    document.getElementById('dashOverview').innerHTML = '<div class="dash-empty">加载失败</div>';
+    document.getElementById('dashManuals').innerHTML = '<div class="dash-empty">加载失败</div>';
+  }
 }
 
 // ==================== 投稿管理 ====================
