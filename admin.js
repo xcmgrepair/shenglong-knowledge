@@ -634,7 +634,7 @@ async function loadCategories() {
   try {
     const { data, error } = await sbData
       .from('categories')
-      .select('*, manuals(name), parent:parent_id(name)')
+      .select('*, manuals(name, icon), parent:parent_id(name)')
       .order('sort_order');
     
     if (error) throw error;
@@ -657,26 +657,185 @@ function renderCategories(list) {
     return;
   }
   
-  container.innerHTML = list.map(c => `
-    <div class="list-item">
-      <div class="list-item-main">
-        <div class="list-item-title">
-          <span class="badge badge-${c.status === 'active' ? 'published' : 'draft'}">${c.status === 'active' ? '启用' : '禁用'}</span>
-          ${escapeHtml(c.name)}
+  // 按手册分组
+  const manualMap = {};
+  const orphanCats = [];
+  
+  list.forEach(c => {
+    if (c.manual_id) {
+      if (!manualMap[c.manual_id]) {
+        manualMap[c.manual_id] = {
+          id: c.manual_id,
+          name: c.manuals?.name || '未知手册',
+          icon: c.manuals?.icon || '📚',
+          categories: []
+        };
+      }
+      manualMap[c.manual_id].categories.push(c);
+    } else {
+      orphanCats.push(c);
+    }
+  });
+  
+  // 构建父子树
+  function buildTree(categories) {
+    const catMap = {};
+    const roots = [];
+    
+    categories.forEach(c => {
+      catMap[c.id] = { ...c, children: [] };
+    });
+    
+    categories.forEach(c => {
+      const node = catMap[c.id];
+      if (c.parent_id && catMap[c.parent_id]) {
+        catMap[c.parent_id].children.push(node);
+      } else {
+        roots.push(node);
+      }
+    });
+    
+    // 排序
+    roots.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    roots.forEach(r => r.children.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)));
+    
+    return roots;
+  }
+  
+  // 递归渲染树节点
+  function renderNode(node) {
+    const hasChildren = node.children && node.children.length > 0;
+    const statusBadge = `<span class="badge badge-${node.status === 'active' ? 'published' : 'draft'}">${node.status === 'active' ? '启用' : '禁用'}</span>`;
+    const subText = `排序：${node.sort_order || 0}${node.description ? ' · ' + escapeHtml(node.description) : ''}`;
+    
+    let html = `<div class="tree-node${hasChildren ? '' : ' collapsed'}">
+      <div class="tree-node-content">
+        ${hasChildren ? `<span class="tree-toggle" onclick="toggleTreeNode(this)">▼</span>` : '<span class="tree-toggle-placeholder"></span>'}
+        <span class="tree-icon">${hasChildren ? '📂' : '📄'}</span>
+        <div class="tree-node-info">
+          <div class="tree-node-title">${statusBadge} ${escapeHtml(node.name)}</div>
+          <div class="tree-node-sub">${subText}</div>
         </div>
-        <div class="list-item-sub">
-          手册：${c.manuals?.name || '未设置'} | 
-          父级：${c.parent?.name || '顶级分类'} | 
-          排序：${c.sort_order || 0}
+        <div class="tree-node-actions">
+          <button class="action-btn action-btn-primary" onclick="event.stopPropagation();editCategory('${node.id}')">编辑</button>
+          <button class="action-btn action-btn-danger" onclick="event.stopPropagation();deleteCategory('${node.id}')">删除</button>
         </div>
-        ${c.description ? `<div class="list-item-desc">${escapeHtml(c.description)}</div>` : ''}
-      </div>
-      <div class="list-item-actions">
-        <button class="action-btn action-btn-primary" onclick="editCategory('${c.id}')">编辑</button>
-        <button class="action-btn action-btn-danger" onclick="deleteCategory('${c.id}')">删除</button>
-      </div>
-    </div>
-  `).join('');
+      </div>`;
+    
+    if (hasChildren) {
+      html += '<div class="tree-children">';
+      node.children.forEach(child => {
+        html += renderNode(child);
+      });
+      html += '</div>';
+    }
+    
+    html += '</div>';
+    return html;
+  }
+  
+  // 构建完整 HTML
+  let html = '';
+  
+  Object.values(manualMap).forEach(manual => {
+    const tree = buildTree(manual.categories);
+    html += `
+      <div class="tree-directory">
+        <div class="tree-directory-header" onclick="toggleTreeDirectory(this)">
+          <span class="tree-toggle">▼</span>
+          <span class="tree-directory-icon">${manual.icon}</span>
+          <span class="tree-directory-name">${escapeHtml(manual.name)}</span>
+          <span class="tree-directory-count">${manual.categories.length} 个分类</span>
+          <button class="action-btn action-btn-primary" onclick="event.stopPropagation();showCategoryFormForManual('${manual.id}','${escapeHtml(manual.name)}')">+ 添加</button>
+        </div>
+        <div class="tree-directory-body">`;
+    
+    if (tree.length > 0) {
+      tree.forEach(node => {
+        html += renderNode(node);
+      });
+    } else {
+      html += '<div style="padding:12px 16px;font-size:13px;color:var(--text-3)">暂无分类，点击"添加"创建</div>';
+    }
+    
+    html += '</div></div>';
+  });
+  
+  // 未分配手册的分类
+  if (orphanCats.length > 0) {
+    html += `
+      <div class="tree-directory">
+        <div class="tree-directory-header" onclick="toggleTreeDirectory(this)">
+          <span class="tree-toggle">▼</span>
+          <span class="tree-directory-icon">📋</span>
+          <span class="tree-directory-name">未分配手册</span>
+          <span class="tree-directory-count">${orphanCats.length} 个分类</span>
+        </div>
+        <div class="tree-directory-body">`;
+    orphanCats.forEach(c => {
+      const statusBadge = `<span class="badge badge-${c.status === 'active' ? 'published' : 'draft'}">${c.status === 'active' ? '启用' : '禁用'}</span>`;
+      html += `
+        <div class="tree-node collapsed">
+          <div class="tree-node-content">
+            <span class="tree-toggle-placeholder"></span>
+            <span class="tree-icon">📄</span>
+            <div class="tree-node-info">
+              <div class="tree-node-title">${statusBadge} ${escapeHtml(c.name)}</div>
+              <div class="tree-node-sub">排序：${c.sort_order || 0}${c.description ? ' · ' + escapeHtml(c.description) : ''}</div>
+            </div>
+            <div class="tree-node-actions">
+              <button class="action-btn action-btn-primary" onclick="event.stopPropagation();editCategory('${c.id}')">编辑</button>
+              <button class="action-btn action-btn-danger" onclick="event.stopPropagation();deleteCategory('${c.id}')">删除</button>
+            </div>
+          </div>
+        </div>`;
+    });
+    html += '</div></div>';
+  }
+  
+  container.innerHTML = html;
+}
+
+function toggleTreeDirectory(headerEl) {
+  const dir = headerEl.parentElement;
+  dir.classList.toggle('collapsed');
+}
+
+function toggleTreeNode(toggleEl) {
+  const node = toggleEl.closest('.tree-node');
+  if (node) {
+    node.classList.toggle('collapsed');
+  }
+}
+
+function showCategoryFormForManual(manualId, manualName) {
+  editingCategoryId = null;
+  document.getElementById('catModalTitle').textContent = '新增分类';
+  document.getElementById('catName').value = '';
+  document.getElementById('catDesc').value = '';
+  document.getElementById('catStatus').value = 'active';
+  document.getElementById('catSort').value = '0';
+  document.getElementById('catParent').innerHTML = '<option value="">顶级分类</option>';
+  
+  loadManualOptions().then(() => {
+    document.getElementById('catManual').value = manualId;
+    loadParentCategories();
+    document.getElementById('categoryModal').style.display = 'flex';
+  });
+}
+
+function filterCategories() {
+  const keyword = document.getElementById('catSearch').value.toLowerCase().trim();
+  if (!keyword) {
+    renderCategories(allCategories);
+    return;
+  }
+  const filtered = allCategories.filter(c => 
+    c.name.toLowerCase().includes(keyword) ||
+    (c.description && c.description.toLowerCase().includes(keyword)) ||
+    (c.manuals?.name && c.manuals.name.toLowerCase().includes(keyword))
+  );
+  renderCategories(filtered);
 }
 
 async function loadManualOptions() {
