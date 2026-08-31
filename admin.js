@@ -791,9 +791,10 @@ async function saveCategory() {
       if (error) throw error;
       showToast('更新成功');
     } else {
+      const slug = 'cat-' + Date.now();
       const { error } = await sbData
         .from('categories')
-        .insert({ name, description, manual_id, parent_id, status, sort_order });
+        .insert({ name, slug, description, manual_id, parent_id, status, sort_order });
       
       if (error) throw error;
       showToast('添加成功');
