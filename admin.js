@@ -1,6 +1,7 @@
 
 // ==================== 配置管理 ====================
-let sb = null;
+let sb = null;       // 认证客户端（含用户 session）
+let sbData = null;   // 数据查询客户端（用 anon key，避免 RLS 递归）
 let currentUser = null;
 let currentSubmissionId = null;
 let editingKnowledgeId = null;
@@ -33,6 +34,13 @@ function initSupabase() {
   const config = getConfig();
   if (config.url && config.key) {
     sb = window.supabase.createClient(config.url, config.key);
+    // 创建独立的数据查询客户端，不携带用户 session
+    // 这样查询不会触发 RLS 递归错误
+    sbData = window.supabase.createClient(config.url, config.key, {
+      global: { headers: { 'X-Client-Info': 'admin-data-client' } }
+    });
+    // 清除 sbData 的 session，确保用 anon key 查询
+    sbData.auth.signOut().catch(() => {});
     return true;
   }
   return false;
@@ -74,7 +82,7 @@ async function checkAuth() {
   let profile = null;
   let profileError = null;
   try {
-    const res = await sb
+    const res = await sbData
       .from('profiles')
       .select('*')
       .eq('id', user.id)
@@ -192,9 +200,9 @@ async function loadStats() {
   try {
     // 分开查询，profiles 查询可能因 RLS 递归失败
     const [manualsRes, knowledgeRes, pendingRes] = await Promise.all([
-      sb.from('manuals').select('*', { count: 'exact', head: true }),
-      sb.from('knowledge').select('*', { count: 'exact', head: true }).eq('status', 'published'),
-      sb.from('submissions').select('*', { count: 'exact', head: true }).eq('status', 'pending')
+      sbData.from('manuals').select('*', { count: 'exact', head: true }),
+      sbData.from('knowledge').select('*', { count: 'exact', head: true }).eq('status', 'published'),
+      sbData.from('submissions').select('*', { count: 'exact', head: true }).eq('status', 'pending')
     ]);
 
     document.getElementById('statManuals').textContent = manualsRes.count || 0;
@@ -203,7 +211,7 @@ async function loadStats() {
 
     // profiles 查询单独处理
     try {
-      const usersRes = await sb.from('profiles').select('*', { count: 'exact', head: true });
+      const usersRes = await sbData.from('profiles').select('*', { count: 'exact', head: true });
       document.getElementById('statUsers').textContent = usersRes.count || 0;
     } catch (e) {
       document.getElementById('statUsers').textContent = 'N/A';
@@ -228,7 +236,7 @@ let allSubmissions = [];
 
 async function loadSubmissions() {
   try {
-    const { data, error } = await sb
+    const { data, error } = await sbData
       .from('submissions')
       .select('*, categories(name)')
       .order('created_at', { ascending: false });
@@ -304,7 +312,7 @@ async function viewSubmission(id) {
   currentSubmissionId = id;
   
   try {
-    const { data, error } = await sb
+    const { data, error } = await sbData
       .from('submissions')
       .select('*, categories(name)')
       .eq('id', id)
@@ -365,14 +373,14 @@ async function approveSubmission() {
   
   try {
     // 获取投稿详情
-    const { data: sub } = await sb
+    const { data: sub } = await sbData
       .from('submissions')
       .select('*')
       .eq('id', currentSubmissionId)
       .single();
     
     // 添加到知识点表
-    const { error: kbError } = await sb
+    const { error: kbError } = await sbData
       .from('knowledge')
       .insert({
         title: sub.title,
@@ -388,7 +396,7 @@ async function approveSubmission() {
     if (kbError) throw kbError;
     
     // 更新投稿状态
-    const { error: subError } = await sb
+    const { error: subError } = await sbData
       .from('submissions')
       .update({ status: 'approved', reviewed_at: new Date().toISOString() })
       .eq('id', currentSubmissionId);
@@ -411,7 +419,7 @@ async function rejectSubmission() {
   if (!confirm('确定要拒绝这条投稿吗？')) return;
   
   try {
-    const { error } = await sb
+    const { error } = await sbData
       .from('submissions')
       .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
       .eq('id', currentSubmissionId);
@@ -434,7 +442,7 @@ let allKnowledge = [];
 
 async function loadKnowledge() {
   try {
-    const { data, error } = await sb
+    const { data, error } = await sbData
       .from('knowledge')
       .select('*, categories(name)')
       .order('created_at', { ascending: false });
@@ -492,7 +500,7 @@ function filterKnowledge() {
 
 async function loadCategoryOptions() {
   try {
-    const { data, error } = await sb
+    const { data, error } = await sbData
       .from('categories')
       .select('id, name')
       .eq('status', 'active')
@@ -527,7 +535,7 @@ async function editKnowledge(id) {
   editingKnowledgeId = id;
   
   try {
-    const { data, error } = await sb
+    const { data, error } = await sbData
       .from('knowledge')
       .select('*')
       .eq('id', id)
@@ -568,7 +576,7 @@ async function saveKnowledge() {
   try {
     if (editingKnowledgeId) {
       // 更新
-      const { error } = await sb
+      const { error } = await sbData
         .from('knowledge')
         .update({ title, content, description, category_id, status, sort_order })
         .eq('id', editingKnowledgeId);
@@ -577,7 +585,7 @@ async function saveKnowledge() {
       showToast('更新成功');
     } else {
       // 新增
-      const { error } = await sb
+      const { error } = await sbData
         .from('knowledge')
         .insert({ title, content, description, category_id, status, sort_order, views: 0 });
       
@@ -599,7 +607,7 @@ async function deleteKnowledge(id) {
   if (!confirm('确定要删除这个知识点吗？此操作不可恢复。')) return;
   
   try {
-    const { error } = await sb
+    const { error } = await sbData
       .from('knowledge')
       .delete()
       .eq('id', id);
@@ -621,7 +629,7 @@ let allCategories = [];
 
 async function loadCategories() {
   try {
-    const { data, error } = await sb
+    const { data, error } = await sbData
       .from('categories')
       .select('*, manuals(name), parent:parent_id(name)')
       .order('sort_order');
@@ -670,7 +678,7 @@ function renderCategories(list) {
 
 async function loadManualOptions() {
   try {
-    const { data, error } = await sb
+    const { data, error } = await sbData
       .from('manuals')
       .select('id, name')
       .eq('status', 'active')
@@ -695,7 +703,7 @@ async function loadParentCategories() {
   if (!manualId) return;
   
   try {
-    const { data, error } = await sb
+    const { data, error } = await sbData
       .from('categories')
       .select('id, name')
       .eq('manual_id', manualId)
@@ -732,7 +740,7 @@ async function editCategory(id) {
   editingCategoryId = id;
   
   try {
-    const { data, error } = await sb
+    const { data, error } = await sbData
       .from('categories')
       .select('*')
       .eq('id', id)
@@ -772,7 +780,7 @@ async function saveCategory() {
   
   try {
     if (editingCategoryId) {
-      const { error } = await sb
+      const { error } = await sbData
         .from('categories')
         .update({ name, description, manual_id, parent_id, status, sort_order })
         .eq('id', editingCategoryId);
@@ -780,7 +788,7 @@ async function saveCategory() {
       if (error) throw error;
       showToast('更新成功');
     } else {
-      const { error } = await sb
+      const { error } = await sbData
         .from('categories')
         .insert({ name, description, manual_id, parent_id, status, sort_order });
       
@@ -802,13 +810,13 @@ async function deleteCategory(id) {
   
   try {
     // 先把该分类下的知识点移到未分类
-    await sb
+    await sbData
       .from('knowledge')
       .update({ category_id: null })
       .eq('category_id', id);
     
     // 删除分类
-    const { error } = await sb
+    const { error } = await sbData
       .from('categories')
       .delete()
       .eq('id', id);
@@ -829,7 +837,7 @@ let allManuals = [];
 
 async function loadManuals() {
   try {
-    const { data, error } = await sb
+    const { data, error } = await sbData
       .from('manuals')
       .select('*')
       .order('sort_order');
@@ -894,7 +902,7 @@ async function editManual(id) {
   editingManualId = id;
   
   try {
-    const { data, error } = await sb
+    const { data, error } = await sbData
       .from('manuals')
       .select('*')
       .eq('id', id)
@@ -932,7 +940,7 @@ async function saveManual() {
   
   try {
     if (editingManualId) {
-      const { error } = await sb
+      const { error } = await sbData
         .from('manuals')
         .update({ name, slug, description, icon, primary_color, status, sort_order })
         .eq('id', editingManualId);
@@ -940,7 +948,7 @@ async function saveManual() {
       if (error) throw error;
       showToast('更新成功');
     } else {
-      const { error } = await sb
+      const { error } = await sbData
         .from('manuals')
         .insert({ name, slug, description, icon, primary_color, status, sort_order });
       
@@ -962,7 +970,7 @@ async function deleteManual(id) {
   if (!confirm('确定要删除这个手册吗？手册下的分类和知识点将被保留。')) return;
   
   try {
-    const { error } = await sb
+    const { error } = await sbData
       .from('manuals')
       .delete()
       .eq('id', id);
@@ -982,7 +990,7 @@ async function deleteManual(id) {
 // ==================== 用户管理 ====================
 async function loadUsers() {
   try {
-    const { data, error } = await sb
+    const { data, error } = await sbData
       .from('profiles')
       .select('*')
       .order('created_at', { ascending: false });
@@ -1040,7 +1048,7 @@ async function setUserRole(userId, role) {
   if (!confirm(`确定要将该用户设为${getRoleText(role)}吗？`)) return;
   
   try {
-    const { error } = await sb
+    const { error } = await sbData
       .from('profiles')
       .update({ role })
       .eq('id', userId);
